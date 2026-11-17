@@ -111,6 +111,12 @@ that it isn't useful as a pre-check, so the extension uses a site list instead.
 
 ## Install
 
+### iPhone and iPad with TestFlight
+
+The easiest way: join the beta at **https://testflight.apple.com/join/rm2Unbn1**, install QuickNews
+from TestFlight, then open the app and follow its setup steps. TestFlight builds keep working with
+Safari's **Share Across Devices** on.
+
 ### iPhone and iPad with Sideloadly (no Xcode)
 
 Each [release](../../releases) has an unsigned IPA. [Sideloadly](https://sideloadly.io) signs it with
