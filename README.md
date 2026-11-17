@@ -1,4 +1,4 @@
-# Open in News
+# QuickNews
 
 Browser extensions for Safari (iPhone, iPad and Mac) and Chrome (Mac) that open paywalled publisher
 articles (WSJ, The Atlantic, The New Yorker, WIRED…) in the Apple News app, where an Apple News+
@@ -116,12 +116,12 @@ that it isn't useful as a pre-check, so the extension uses a site list instead.
 Each [release](../../releases) has an unsigned IPA. [Sideloadly](https://sideloadly.io) signs it with
 your own Apple ID and installs it.
 
-1. Download `AutoOpenInNews-<version>-unsigned.ipa` from the latest release.
+1. Download the unsigned IPA (`…-unsigned.ipa`) from the latest release.
 2. Connect your iPhone or iPad to your computer, open Sideloadly, drag the IPA onto it, enter your
    Apple ID, and click **Start**.
 3. On the device, trust your Apple ID in **Settings › General › VPN & Device Management**. On iOS 16
    and later, also turn on **Settings › Privacy & Security › Developer Mode** if iOS asks.
-4. Open the app, tap **Open Safari Extension Settings**, turn **Auto Open in News** on, and allow it
+4. Open the app, tap **Open Safari Extension Settings**, turn **QuickNews** on, and allow it
    on the publishers you read.
 5. Turn off **Settings › Apps › Safari › Extensions › Share Across Devices**, or Safari will keep
    turning the extension off (see below).
@@ -149,9 +149,9 @@ Set your own team (`DEVELOPMENT_TEAM`), bundle IDs and app group names in `proje
 [`Shared/SharedStatus.swift`](Shared/SharedStatus.swift).
 
 - **iPhone and iPad:** run the **OpenInNews** scheme on your device, then turn the extension on in
-  **Settings › Apps › Safari › Extensions › Auto Open in News** and allow it on the publishers you read.
+  **Settings › Apps › Safari › Extensions › QuickNews** and allow it on the publishers you read.
 - **Mac:** run `./scripts/install-mac.sh`, which builds the **OpenInNewsMac** scheme and installs it
-  to `/Applications`. Then tick **Auto Open in News** in **Safari › Settings › Extensions** and allow
+  to `/Applications`. Then tick **QuickNews** in **Safari › Settings › Extensions** and allow
   it on the publishers you read.
 
 **If Safari keeps turning the extension off:** turn off **Settings › Apps › Safari › Extensions ›

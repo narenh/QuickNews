@@ -23,7 +23,7 @@ targetTemplates:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.canopysf.AutoOpenInNews
-        PRODUCT_NAME: Open in News
+        PRODUCT_NAME: QuickNews
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   Extension:
     type: app-extension
@@ -58,7 +58,7 @@ targets:
     info:
       path: Config/App-iOS.plist
       properties: &appInfo
-        CFBundleDisplayName: Auto Open in News
+        CFBundleDisplayName: QuickNews
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
@@ -82,7 +82,7 @@ targets:
     info:
       path: Config/Extension-iOS.plist
       properties: &extensionInfo
-        CFBundleDisplayName: Auto Open in News
+        CFBundleDisplayName: QuickNews
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:

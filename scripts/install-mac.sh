@@ -3,7 +3,7 @@
 #
 #   ./scripts/install-mac.sh
 #
-# Then tick Open in News in Safari › Settings › Extensions.
+# Then tick QuickNews in Safari › Settings › Extensions.
 set -euo pipefail
 
 ROOT="${0:A:h}/.."
@@ -15,19 +15,26 @@ xcodebuild -project OpenInNews.xcodeproj -scheme OpenInNewsMac -configuration Re
   SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) NEWS_CLIENT_HEADERS' build \
   | grep -E 'error:|BUILD (SUCCEEDED|FAILED)'
 
-BUILT="build/dd/Build/Products/Release/Open in News.app"
+APP="QuickNews.app"
+OLD_APP="Open in News.app" # the app's name before QuickNews
+BUILT="build/dd/Build/Products/Release/$APP"
 DEST="/Applications"
 [[ -w "$DEST" ]] || DEST="$HOME/Applications"
 mkdir -p "$DEST"
-rm -rf "$DEST/Open in News.app"
+rm -rf "$DEST/$APP"
 cp -R "$BUILT" "$DEST/"
 
 # Xcode registers every app it builds, which would show Safari a second copy
 # of the extension. Keep only the installed one.
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
-"$LSREGISTER" -u "$ROOT/build/dd/Build/Products/Debug/Open in News.app" 2>/dev/null || true
+# An install under the old name carries the same extension; remove it too.
+for old in "$DEST/$OLD_APP" "$ROOT/build/dd/Build/Products/"{Debug,Release}"/$OLD_APP"; do
+  "$LSREGISTER" -u "$old" 2>/dev/null || true
+done
+rm -rf "$DEST/$OLD_APP"
+"$LSREGISTER" -u "$ROOT/build/dd/Build/Products/Debug/$APP" 2>/dev/null || true
 "$LSREGISTER" -u "$ROOT/$BUILT" 2>/dev/null || true
-"$LSREGISTER" -f "$DEST/Open in News.app"
+"$LSREGISTER" -f "$DEST/$APP"
 
-open "$DEST/Open in News.app"
-echo "Installed $DEST/Open in News.app"
+open "$DEST/$APP"
+echo "Installed $DEST/$APP"

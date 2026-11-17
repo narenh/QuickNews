@@ -1,4 +1,4 @@
-Required Notice: Copyright (c) 2026 Naren Hazareesingh (https://github.com/narenh/OpenInNews)
+Required Notice: Copyright (c) 2026 Naren Hazareesingh (https://github.com/narenh/QuickNews)
 
 # PolyForm Noncommercial License 1.0.0
 

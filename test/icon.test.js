@@ -15,7 +15,7 @@ test('gray with a tooltip when the article is not in News', () => {
 });
 
 test('normal icon when the article is found', () => {
-  assert.deepStrictEqual(iconFor('AbC123', manifest), { path: manifest.action.default_icon, title: 'Auto Open in News' });
+  assert.deepStrictEqual(iconFor('AbC123', manifest), { path: manifest.action.default_icon, title: 'QuickNews' });
 });
 
 test('normal icon for undefined: lookup failed or never ran', () => {

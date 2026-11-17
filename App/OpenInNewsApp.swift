@@ -142,7 +142,7 @@ struct StatusView: View {
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle("Auto Open in News")
+            .navigationTitle("QuickNews")
             .refreshable { await model.refresh() }
         }
         .task(id: scenePhase) {
@@ -293,10 +293,10 @@ struct StatusView: View {
         Section("Set up") {
             #if os(macOS)
             Label("Open Safari › Settings › Extensions", systemImage: "1.circle")
-            Label("Tick Auto Open in News", systemImage: "2.circle")
+            Label("Tick QuickNews", systemImage: "2.circle")
             #else
             Label("Tap Open Safari Extension Settings above", systemImage: "1.circle")
-            Label("Turn Auto Open in News on", systemImage: "2.circle")
+            Label("Turn QuickNews on", systemImage: "2.circle")
             #endif
             Label("Open a publisher’s article in Safari and allow the extension there", systemImage: "3.circle")
         }

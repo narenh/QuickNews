@@ -24,7 +24,7 @@ test('a new page resets the gray', async () => {
   const b = load(async () => null);
   await b.visit(1, ARTICLE);
   await b.navigate(1, 'https://www.wsj.com/news/world');
-  assert.deepStrictEqual(b.icons[1], { gray: false, title: 'Auto Open in News' });
+  assert.deepStrictEqual(b.icons[1], { gray: false, title: 'QuickNews' });
 });
 
 test('no gray if the tab moved on; query and fragment changes do not count', async () => {
