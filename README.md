@@ -1,3 +1,5 @@
+<img src="Extension/Resources/icons/256.png" alt="QuickNews icon" width="128" height="128">
+
 # QuickNews
 
 Browser extensions for Safari (iPhone, iPad and Mac) and Chrome (Mac) that open paywalled publisher
