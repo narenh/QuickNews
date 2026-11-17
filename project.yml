@@ -62,6 +62,8 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        # The extension's QuickNews Settings button opens the app with quicknews://.
+        CFBundleURLTypes: [{CFBundleURLName: com.canopysf.AutoOpenInNews, CFBundleURLSchemes: [quicknews]}]
         ITSAppUsesNonExemptEncryption: false # HTTPS only
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]

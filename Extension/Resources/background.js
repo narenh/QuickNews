@@ -165,6 +165,13 @@ async function checkPage(urlString, tabId) {
 }
 
 /* Opens News from the native handler, which only does so on the Mac. */
+/* Opens the QuickNews app from the native handler, which only does so on the Mac. */
+async function openApp() {
+  if (!IS_SAFARI) return { opened: false };
+  const reply = await browser.runtime.sendNativeMessage(APP_ID, { action: 'openApp' }).catch(() => null);
+  return { opened: reply?.opened === true };
+}
+
 async function openArticle(id) {
   if (!IS_SAFARI) return { opened: false };
   const reply = await browser.runtime.sendNativeMessage(APP_ID, { action: 'open', id }).catch(() => null);
@@ -192,6 +199,7 @@ const handlers = {
   checkPage: (m, sender) => checkPage(m.url, sender.tab?.id),
   lookup: async (m) => ({ id: await lookup(m.url) }),
   open: (m) => openArticle(m.id),
+  openApp: () => openApp(),
   siteStatus: (m) => siteStatus(m.host),
   setMode: (m) => setMode(m.site, m.mode)
 };

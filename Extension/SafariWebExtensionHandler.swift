@@ -60,6 +60,8 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             Self.reply(context, [:])
         case "open":
             Self.reply(context, ["opened": open(articleID: message["id"] as? String)])
+        case "openApp":
+            Self.reply(context, ["opened": openApp()])
         default:
             Self.reply(context, [:])
         }
@@ -69,6 +71,18 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
         let response = NSExtensionItem()
         response.userInfo = [SFExtensionMessageKey: message]
         context.completeRequest(returningItems: [response])
+    }
+
+    /// Opens the app this extension ships in. The extension sits in
+    /// QuickNews.app/Contents/PlugIns/, so the app is two folders up.
+    private func openApp() -> Bool {
+        #if os(macOS)
+        let app = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        NSWorkspace.shared.openApplication(at: app, configuration: NSWorkspace.OpenConfiguration())
+        return true
+        #else
+        return false // iOS extensions can't open apps; the popup asks Safari to
+        #endif
     }
 
     private func open(articleID: String?) -> Bool {

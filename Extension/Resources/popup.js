@@ -3,6 +3,18 @@ const send = (action, fields = {}) => browser.runtime.sendMessage({ action, ...f
 
 (async () => {
   const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+
+  // Safari only: Chrome has no app to open.
+  if (browser.runtime.getURL('').startsWith('safari-web-extension:')) {
+    $('app').hidden = false;
+    $('app').onclick = async () => {
+      const { opened } = await send('openApp');
+      // iOS: the extension can't launch the app itself, so the page asks Safari to.
+      if (!opened && tab?.id !== undefined) await browser.tabs.update(tab.id, { url: 'quicknews://' });
+      window.close();
+    };
+  }
+
   if (!/^https?:/.test(tab?.url ?? '')) {
     $('open').disabled = true;
     $('note').textContent = 'Open a web page first.';
