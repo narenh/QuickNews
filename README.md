@@ -9,6 +9,12 @@ subscription covers them.
 It needs no private APIs and no server. It works by reproducing the lookup that macOS News uses to
 turn a web URL into a News article: in Swift for Safari, and in JavaScript for Chrome.
 
+## Get it on TestFlight
+
+On iPhone and iPad, join the beta at **https://testflight.apple.com/join/rm2Unbn1**, install
+QuickNews from TestFlight, then open the app and follow its setup steps. TestFlight builds keep
+working with Safari's **Share Across Devices** on. Other ways to install are under [Install](#install).
+
 ## How it works
 
 1. A content script reports each page you load to the extension's background script.
@@ -112,12 +118,6 @@ Apple's `open-web-links/domainBloomFilter` was also examined. It flags so many u
 that it isn't useful as a pre-check, so the extension uses a site list instead.
 
 ## Install
-
-### iPhone and iPad with TestFlight
-
-The easiest way: join the beta at **https://testflight.apple.com/join/rm2Unbn1**, install QuickNews
-from TestFlight, then open the app and follow its setup steps. TestFlight builds keep working with
-Safari's **Share Across Devices** on.
 
 ### iPhone and iPad with Sideloadly (no Xcode)
 
