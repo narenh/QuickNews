@@ -11,7 +11,7 @@ settings:
     DEVELOPMENT_TEAM: UC3Y84QJ83
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "12"
+    CURRENT_PROJECT_VERSION: "13"
 
 # Shared pieces of the four targets.
 targetTemplates:
@@ -65,7 +65,8 @@ targets:
         ITSAppUsesNonExemptEncryption: false # HTTPS only
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
-    # The app group carries the extension's settings to the app.
+    # The app group holds the site settings the app and the extension share,
+    # and the extension's reports to the app.
     entitlements:
       path: Config/App-iOS.entitlements
       properties:

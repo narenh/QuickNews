@@ -1,7 +1,7 @@
 /*
  * Sites checked on every page load before you add any yourself. Each is a
  * paywalled publisher whose current articles resolve in Apple's index
- * (scripts/check-site.js). Subdomains are included. Add or remove sites from
+ * (scripts/check-site.js). Subdomains are included. Set a site's mode from
  * the toolbar popup.
  */
 self.SEED_SITES = [

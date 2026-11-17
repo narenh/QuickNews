@@ -1,7 +1,7 @@
 /*
  * Decides whether a page should open in News, using owl.js to look it up in
- * Apple's index. A page is only looked up on sites you have turned on; a miss
- * means News has no copy, so the page is left alone.
+ * Apple's index. A page is only looked up on sites whose mode is ask or auto;
+ * a miss means News has no copy, so the page is left alone.
  */
 
 const COOLDOWN_MS = 15 * 60 * 1000; // don't auto-open the same URL twice in this window
@@ -11,18 +11,39 @@ const APP_ID = 'com.canopysf.AutoOpenInNews';
 // Safari extensions come with a native handler; Chrome's has none.
 const IS_SAFARI = browser.runtime.getURL('').startsWith('safari-web-extension:');
 
+/*
+ * The site modes. In Safari they live in the app group, which the app edits
+ * too, so they're read through the native handler every time. Chrome, which
+ * has no app, keeps them in extension storage.
+ */
 async function settings() {
-  const stored = await browser.storage.local.get(['sites', 'auto', 'opened', 'manual', 'manualAt']);
-  return {
-    sites: stored.sites ?? Object.fromEntries(self.SEED_SITES.map((s) => [s, true])),
-    auto: stored.auto ?? true,
-    opened: stored.opened ?? {},
-    manual: stored.manual ?? {}, // site -> true: show the pill, never open News by itself
-    manualAt: stored.manualAt ?? 0
-  };
+  if (IS_SAFARI) {
+    const reply = await browser.runtime.sendNativeMessage(APP_ID, { action: 'settings' }).catch(() => null);
+    if (reply?.modes) return { modes: cleanModes(reply.modes) };
+    if (reply?.stored === false) {
+      // Nothing saved yet: hand over this extension's own settings, from an older
+      // build or the defaults. The handler keeps whatever got there first.
+      const handed = await browser.runtime.sendNativeMessage(APP_ID, { action: 'setModes', modes: await localModes() }).catch(() => null);
+      if (handed?.modes) return { modes: cleanModes(handed.modes) };
+    }
+  }
+  return { modes: await localModes() };
 }
 
-/* The configured site that covers this host: itself or its nearest parent. */
+/* Modes kept in extension storage: Chrome's, and Safari's before the app group held them. */
+async function localModes() {
+  const stored = await browser.storage.local.get(['sites', 'auto', 'manual', 'modes']);
+  const { modes, migrated } = modesFrom(stored, self.SEED_SITES);
+  if (migrated) await browser.storage.local.set({ modes });
+  return modes;
+}
+
+/* The sites that have a mode, plus the seed sites, which are off unless the map says otherwise. */
+function knownSites(modes) {
+  return { ...Object.fromEntries(self.SEED_SITES.map((s) => [s, 'off'])), ...modes };
+}
+
+/* The known site that covers this host: itself or its nearest parent. */
 function siteFor(host, sites) {
   for (let h = host; h.includes('.'); h = h.slice(h.indexOf('.') + 1)) {
     if (h in sites) return h;
@@ -70,17 +91,15 @@ function lookup(url) {
 }
 
 /*
- * The app shows the extension's settings and where it has run, which Safari
- * doesn't expose to it. Each report replaces the last one.
+ * The app shows where the extension has run and its website access, which
+ * Safari doesn't expose to it. Each report replaces the last one.
  */
 async function syncToApp() {
   if (!IS_SAFARI) return;
-  const { sites, auto, manual, manualAt } = await settings();
   const { seen = {}, active = 0 } = await browser.storage.local.get(['seen', 'active']);
   const access = await websiteAccess();
-  const reply = await browser.runtime.sendNativeMessage(APP_ID, { action: 'sync', state: { sites, auto, seen, active, manual, manualAt, ...(access && { access }) } });
+  await browser.runtime.sendNativeMessage(APP_ID, { action: 'sync', state: { seen, active, ...(access && { access }) } });
   await browser.storage.local.set({ reportedAccess: access });
-  await adoptFromApp(reply);
 }
 
 /*
@@ -94,21 +113,7 @@ async function websiteAccess() {
   return origins.some((o) => o !== 'https://news-assets.apple.com/*') ? 'some' : 'none';
 }
 
-/*
- * The app can edit the button-only sites too. Whichever side changed them
- * last wins; the app's copy arrives with any native reply.
- */
-async function adoptFromApp(reply) {
-  if (!(reply?.manualAt > (await settings()).manualAt)) return;
-  await browser.storage.local.set({ manual: reply.manual ?? {}, manualAt: reply.manualAt });
-}
-
-async function pullFromApp() {
-  if (!IS_SAFARI) return;
-  await adoptFromApp(await browser.runtime.sendNativeMessage(APP_ID, { action: 'pull' }).catch(() => null));
-}
-
-/* Records that the extension ran (on an enabled site, if given), reporting it when stale. */
+/* Records that the extension ran (on a known site, if given), reporting it when stale. */
 async function noteActivity(site) {
   if (!IS_SAFARI) return; // only the Safari app shows where the extension ran
   const now = Date.now();
@@ -139,18 +144,17 @@ async function showMissing(tabId, url) {
 
 async function checkPage(urlString, tabId) {
   const url = new URL(urlString);
-  const { sites } = await settings();
-  const site = siteFor(url.hostname, sites);
-  noteActivity(site && sites[site] ? site : null).catch(() => {});
-  if (!site || !sites[site] || !hasArticleSlug(url)) return null;
+  const current = await settings();
+  const { modes } = current;
+  const site = siteFor(url.hostname, knownSites(modes));
+  noteActivity(site).catch(() => {});
+  if (modeFor(modes, site) === 'off' || !hasArticleSlug(url)) return null;
 
   const id = await lookup(urlString);
   if (id === null) showMissing(tabId, urlString).catch(() => {});
   if (!id) return null;
 
-  await pullFromApp();
-  const current = await settings();
-  const { opened } = current;
+  const { opened = {} } = await browser.storage.local.get(['opened']);
   const now = Date.now();
   const openNow = autoOpens(current, site) && !(now - (opened[urlString] ?? 0) < COOLDOWN_MS);
   if (openNow) {
@@ -168,30 +172,20 @@ async function openArticle(id) {
 }
 
 async function siteStatus(host) {
-  await pullFromApp();
-  const { sites, auto, manual } = await settings();
-  const site = siteFor(host, sites);
-  return { site: site ?? host.replace(/^www\./, ''), on: !!(site && sites[site]), auto, siteAuto: !(site && manual[site]) };
+  const { modes } = await settings();
+  const site = siteFor(host, knownSites(modes));
+  return { site: site ?? host.replace(/^www\./, ''), mode: modeFor(modes, site) };
 }
 
-async function setSite(site, on) {
-  const { sites } = await settings();
-  await browser.storage.local.set({ sites: { ...sites, [site]: on } });
-  await syncToApp().catch(() => {});
-}
-
-async function setSiteAuto(site, on) {
-  const { manual } = await settings();
-  const next = { ...manual };
-  if (on) delete next[site];
-  else next[site] = true;
-  await browser.storage.local.set({ manual: next, manualAt: Date.now() });
-  await syncToApp().catch(() => {});
-}
-
-async function setAuto(on) {
-  await browser.storage.local.set({ auto: on });
-  await syncToApp().catch(() => {});
+async function setMode(site, mode) {
+  if (!MODES.includes(mode)) return;
+  if (IS_SAFARI) {
+    await settings(); // makes sure the app group holds the settings before changing one
+    const reply = await browser.runtime.sendNativeMessage(APP_ID, { action: 'setMode', site, mode }).catch(() => null);
+    if (reply) return;
+  }
+  const modes = await localModes();
+  await browser.storage.local.set({ modes: { ...modes, [site]: mode } });
 }
 
 const handlers = {
@@ -199,9 +193,7 @@ const handlers = {
   lookup: async (m) => ({ id: await lookup(m.url) }),
   open: (m) => openArticle(m.id),
   siteStatus: (m) => siteStatus(m.host),
-  setSite: (m) => setSite(m.site, m.on),
-  setAuto: (m) => setAuto(m.on),
-  setSiteAuto: (m) => setSiteAuto(m.site, m.on)
+  setMode: (m) => setMode(m.site, m.mode)
 };
 
 // Callback style: Chrome ignores a promise returned from the listener.

@@ -26,8 +26,8 @@ final class StatusModel {
     /// nil when iOS can't say: before iOS 26.2, or when the check failed.
     var extensionEnabled: Bool?
     var status: ExtensionStatus?
-    /// Sites set to the button only: Safari's copy or the app's, whichever changed last.
-    var manualSites: [String] = []
+    /// Bumped when the app edits the site modes, so views that read them update.
+    var modesRevision = 0
 
     func refresh() async {
         #if os(macOS)
@@ -47,25 +47,9 @@ final class StatusModel {
         }
         #endif
         status = SharedStatus.load()
-        manualSites = currentManual().filter(\.value).map(\.key).sorted()
-    }
-
-    private func currentManual() -> [String: Bool] {
-        let fromSafari = (sites: status?.manual ?? [:], at: status?.manualAt ?? 0)
-        guard let fromApp = SharedStatus.loadManual(), fromApp.at > fromSafari.at else { return fromSafari.sites }
-        return fromApp.sites
-    }
-
-    func setManual(_ site: String, _ on: Bool) {
-        var sites = currentManual()
-        sites[site] = on ? true : nil
-        SharedStatus.saveManual(sites)
-        manualSites = sites.filter(\.value).map(\.key).sorted()
+        modesRevision += 1
     }
 }
-
-/// How long a site counts as recently checked in the Sites list.
-private let recentlySeen: TimeInterval = 30 * 24 * 3600
 
 // MARK: - Lights
 
@@ -116,7 +100,6 @@ struct StatusRow<Detail: View>: View {
 
 struct StatusView: View {
     @State private var model = StatusModel()
-    @State private var newManualSite = ""
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -126,7 +109,6 @@ struct StatusView: View {
                     extensionRow
                     if SharedStatus.isAvailable {
                         accessRow
-                        autoRow
                     }
                     Button("Open Safari Extension Settings") {
                         openExtensionSettings()
@@ -136,11 +118,8 @@ struct StatusView: View {
                         Text("This build was signed without its app group, so it can’t show the extension’s settings.")
                     }
                 }
-                if let status = model.status {
-                    sitesSection(status)
-                }
                 if SharedStatus.isAvailable {
-                    manualSection
+                    sitesLink
                 }
                 setupSection
             }
@@ -197,78 +176,14 @@ struct StatusView: View {
         #endif
     }
 
-    @ViewBuilder
-    private var autoRow: some View {
-        if let status = model.status {
-            if status.auto {
-                StatusRow(light: .green, title: "Open automatically") { Text("On") }
-            } else {
-                StatusRow(light: .yellow, title: "Open automatically") { Text("Off — tap Open in News on the page") }
-            }
-        } else {
-            StatusRow(light: .off, title: "Open automatically") { Text("Not reported yet") }
-        }
-    }
-
-    private func sitesSection(_ status: ExtensionStatus) -> some View {
+    private var sitesLink: some View {
         Section {
-            ForEach(status.sites.keys.sorted(), id: \.self) { site in
-                if status.sites[site] == true {
-                    if let seen = status.lastSeen(site) {
-                        StatusRow(light: -seen.timeIntervalSinceNow < recentlySeen ? .green : .yellow, title: site) {
-                            Text("Last checked \(seen, format: .relative(presentation: .named))")
-                        }
-                    } else {
-                        StatusRow(light: .yellow, title: site) { Text("Not visited yet") }
-                    }
-                } else {
-                    StatusRow(light: .off, title: site) { Text("Off") }
-                }
+            NavigationLink {
+                SitesView(model: model)
+            } label: {
+                LabeledContent("Sites", value: model.summary)
             }
-        } header: {
-            Text("Sites")
-        } footer: {
-            Text("Add or remove sites from the extension’s menu in the address bar.")
         }
-    }
-
-    private var manualSection: some View {
-        Section {
-            ForEach(model.manualSites, id: \.self) { site in
-                HStack {
-                    Text(site)
-                    Spacer()
-                    Button("Remove", role: .destructive) { model.setManual(site, false) }
-                }
-            }
-            HStack {
-                TextField("example.com", text: $newManualSite)
-                    .autocorrectionDisabled()
-                #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                #endif
-                    .onSubmit(addManualSite)
-                Button("Add", action: addManualSite)
-                    .disabled(manualSiteToAdd.isEmpty)
-            }
-        } header: {
-            Text("Button only")
-        } footer: {
-            Text("These sites show the Open in News button but never open News by themselves. Safari picks up changes the next time it finds an article.")
-        }
-    }
-
-    /// What the user typed, as a site key: lowercase, no "www.".
-    private var manualSiteToAdd: String {
-        let site = newManualSite.trimmingCharacters(in: .whitespaces).lowercased()
-        return site.hasPrefix("www.") ? String(site.dropFirst(4)) : site
-    }
-
-    private func addManualSite() {
-        guard !manualSiteToAdd.isEmpty else { return }
-        model.setManual(manualSiteToAdd, true)
-        newManualSite = ""
     }
 
     private var setupSteps: [String] {

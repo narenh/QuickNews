@@ -5,9 +5,9 @@ import AppKit
 #endif
 
 /// Native side of the Safari extension. Looks up articles from the extension's
-/// own process (see OWLResolver), stores the settings background.js reports for
-/// the app to show, and on the Mac opens articles in News without Safari's
-/// "Open in News?" prompt.
+/// own process (see OWLResolver), reads and writes the site settings the app
+/// shares (SharedStatus), stores what background.js reports for the app to show,
+/// and on the Mac opens articles in News without Safari's "Open in News?" prompt.
 final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
     private static let log = Logger(subsystem: "com.canopysf.AutoOpenInNews", category: "lookup")
 
@@ -37,20 +37,32 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             if let state = message["state"] {
                 SharedStatus.save(state)
             }
-            Self.reply(context, Self.appManual())
-        case "pull":
-            Self.reply(context, Self.appManual())
+            Self.reply(context, [:])
+        case "settings":
+            // stored: false tells background.js to hand over settings from an older build.
+            if let modes = SharedStatus.storedModes() {
+                Self.reply(context, ["modes": modes.mapValues(\.rawValue)])
+            } else {
+                Self.reply(context, ["stored": false])
+            }
+        case "setModes":
+            let raw = message["modes"] as? [String: String] ?? [:]
+            if SharedStatus.storedModes() == nil {
+                SharedStatus.saveModes(raw.compactMapValues(SiteMode.init(rawValue:)))
+            }
+            Self.reply(context, ["modes": SharedStatus.modes.mapValues(\.rawValue)])
+        case "setMode":
+            var modes = SharedStatus.modes
+            if let site = message["site"] as? String, let mode = (message["mode"] as? String).flatMap(SiteMode.init(rawValue:)) {
+                modes[site] = mode
+                SharedStatus.saveModes(modes)
+            }
+            Self.reply(context, [:])
         case "open":
             Self.reply(context, ["opened": open(articleID: message["id"] as? String)])
         default:
             Self.reply(context, [:])
         }
-    }
-
-    /// The app's button-only sites; background.js keeps them if they're newer.
-    private static func appManual() -> [String: Any] {
-        guard let manual = SharedStatus.loadManual() else { return [:] }
-        return ["manual": manual.sites, "manualAt": manual.at]
     }
 
     private static func reply(_ context: NSExtensionContext, _ message: [String: Any]) {

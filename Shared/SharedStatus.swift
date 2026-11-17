@@ -1,15 +1,11 @@
 import Foundation
 
-/// The extension's settings as it last reported them, shared with the app
-/// through the app group. Safari keeps the real settings in the extension's
-/// own storage, which the app can't read.
+/// What the extension last reported about itself (where it ran, its website
+/// access), shared with the app through the app group. The site settings
+/// aren't part of it: they live in the app group itself (`SharedStatus.modes`).
 struct ExtensionStatus: Codable {
-    var sites: [String: Bool]   // site -> on/off
-    var auto: Bool
     var seen: [String: Double]  // site -> when the extension last ran there (ms since 1970)
     var active: Double          // when the extension last ran anywhere (ms since 1970)
-    var manual: [String: Bool]?  // site -> true: button only, never opens News by itself
-    var manualAt: Double?        // when manual last changed in Safari (ms since 1970)
     var access: String?          // websites Safari lets it run on: "all", "some" or "none"
 
     /// When the extension last ran anywhere.
@@ -18,6 +14,14 @@ struct ExtensionStatus: Codable {
     func lastSeen(_ site: String) -> Date? {
         seen[site].map { Date(timeIntervalSince1970: $0 / 1000) }
     }
+}
+
+/// What the extension does on a site. A site that isn't in the map is off.
+enum SiteMode: String, CaseIterable, Identifiable {
+    case off, ask, auto
+
+    var id: Self { self }
+    var title: String { rawValue.capitalized }
 }
 
 enum SharedStatus {
@@ -35,7 +39,7 @@ enum SharedStatus {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) != nil
     }
     private static let statusKey = "extensionStatus"
-    private static let manualKey = "manualSites"
+    private static let modesKey = "siteModes"
 
     static func save(_ json: Any) {
         guard let data = try? JSONSerialization.data(withJSONObject: json),
@@ -49,10 +53,10 @@ enum SharedStatus {
                                              CFNotificationName(changedName as CFString), nil, nil, true)
     }
 
-    /// Posted across processes whenever the extension saves a report.
+    /// Posted across processes whenever the extension's report or the site settings change.
     private static let changedName = "com.canopysf.AutoOpenInNews.statusChanged"
 
-    /// Yields each time the extension saves a report, so the app can update while it's open.
+    /// Yields each time the report or the site settings change, so the app can update while it's open.
     static func changes() -> AsyncStream<Void> {
         AsyncStream { continuation in
             let box = Unmanaged.passRetained(ContinuationBox(continuation)).toOpaque()
@@ -73,17 +77,21 @@ enum SharedStatus {
         init(_ continuation: AsyncStream<Void>.Continuation) { self.continuation = continuation }
     }
 
-    /// Button-only sites as last edited in the app, with when (ms since 1970).
-    /// The extension takes them when they're newer than its own copy.
-    static func loadManual() -> (sites: [String: Bool], at: Double)? {
-        guard let stored = defaults?.dictionary(forKey: manualKey),
-              let sites = stored["manual"] as? [String: Bool],
-              let at = stored["manualAt"] as? Double else { return nil }
-        return (sites, at)
+    /// The site settings: the one copy, which the app and the extension both
+    /// read and write. nil until either has saved them.
+    static func storedModes() -> [String: SiteMode]? {
+        guard let raw = defaults?.dictionary(forKey: modesKey)?["modes"] as? [String: String] else { return nil }
+        return raw.compactMapValues(SiteMode.init(rawValue:))
     }
 
-    static func saveManual(_ sites: [String: Bool]) {
-        defaults?.set(["manual": sites, "manualAt": Date().timeIntervalSince1970 * 1000], forKey: manualKey)
+    /// The site settings, or before anything is saved, the defaults: every built-in site on Auto.
+    static var modes: [String: SiteMode] {
+        storedModes() ?? Dictionary(uniqueKeysWithValues: seedSites.map { ($0, SiteMode.auto) })
+    }
+
+    static func saveModes(_ modes: [String: SiteMode]) {
+        defaults?.set(["modes": modes.mapValues(\.rawValue)], forKey: modesKey)
+        postChanged()
     }
 
     static func load() -> ExtensionStatus? {
