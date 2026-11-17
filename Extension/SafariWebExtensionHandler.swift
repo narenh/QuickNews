@@ -1,4 +1,5 @@
 import SafariServices
+import os
 #if os(macOS)
 import AppKit
 #endif
@@ -8,6 +9,8 @@ import AppKit
 /// the app to show, and on the Mac opens articles in News without Safari's
 /// "Open in News?" prompt.
 final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
+    private static let log = Logger(subsystem: "com.canopysf.AutoOpenInNews", category: "lookup")
+
     func beginRequest(with context: NSExtensionContext) {
         let item = context.inputItems.first as? NSExtensionItem
         let message = item?.userInfo?[SFExtensionMessageKey] as? [String: Any] ?? [:]
@@ -17,9 +20,15 @@ final class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             let url = message["url"] as? String ?? ""
             Task {
                 do {
+                    #if DEBUG
+                    let started = ContinuousClock.now
+                    #endif
                     let result = try await OWLResolver.resolve(url)
-                    Self.reply(context, ["found": result.articleID != nil, "id": result.articleID ?? "", "ranged": result.ranged,
-                                         "newsHeaders": OWLResolver.sendsNewsHeaders])
+                    #if DEBUG
+                    let ms = Int((ContinuousClock.now - started) / .milliseconds(1))
+                    Self.log.debug("Lookup \(result.articleID != nil ? "found" : "missed", privacy: .public) in \(ms) ms, \(result.ranged ? "partial" : "whole", privacy: .public) index download\(OWLResolver.sendsNewsHeaders ? " as News" : "", privacy: .public)")
+                    #endif
+                    Self.reply(context, ["found": result.articleID != nil, "id": result.articleID ?? ""])
                 } catch {
                     Self.reply(context, ["error": String(describing: error)])
                 }

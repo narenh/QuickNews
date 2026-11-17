@@ -1,5 +1,8 @@
 import SafariServices
 import SwiftUI
+import os
+
+private let log = Logger(subsystem: "com.canopysf.AutoOpenInNews", category: "status")
 
 @main
 struct OpenInNewsApp: App {
@@ -20,10 +23,9 @@ struct OpenInNewsApp: App {
 
 @Observable
 final class StatusModel {
-    /// nil when iOS can't say (before 26.2).
+    /// nil when iOS can't say: before iOS 26.2, or when the check failed.
     var extensionEnabled: Bool?
     var status: ExtensionStatus?
-    var syncedAt: Date?
     /// Sites set to the button only: Safari's copy or the app's, whichever changed last.
     var manualSites: [String] = []
 
@@ -32,12 +34,19 @@ final class StatusModel {
         extensionEnabled = try? await SFSafariExtensionManager.stateOfSafariExtension(withIdentifier: SharedStatus.extensionID).isEnabled
         #else
         if #available(iOS 26.2, *) {
-            extensionEnabled = try? await SFSafariExtensionManager.stateOfExtension(withIdentifier: SharedStatus.extensionID).isEnabled
+            // The check has been seen to fail now and then, so it gets a second try.
+            extensionEnabled = nil
+            for attempt in 0..<2 where extensionEnabled == nil {
+                if attempt > 0 { try? await Task.sleep(for: .milliseconds(500)) }
+                do {
+                    extensionEnabled = try await SFSafariExtensionManager.stateOfExtension(withIdentifier: SharedStatus.extensionID).isEnabled
+                } catch {
+                    log.error("Extension state check failed: \(String(describing: error), privacy: .public)")
+                }
+            }
         }
         #endif
-        let shared = SharedStatus.load()
-        status = shared?.status
-        syncedAt = shared?.syncedAt
+        status = SharedStatus.load()
         manualSites = currentManual().filter(\.value).map(\.key).sorted()
     }
 
@@ -55,8 +64,7 @@ final class StatusModel {
     }
 }
 
-/// A site counts as reachable if the extension ran there recently, which it
-/// can only do once you've allowed it on that site.
+/// How long a site counts as recently checked in the Sites list.
 private let recentlySeen: TimeInterval = 30 * 24 * 3600
 
 // MARK: - Lights
@@ -119,7 +127,9 @@ struct StatusView: View {
                     if SharedStatus.isAvailable {
                         accessRow
                         autoRow
-                        lookupRow
+                    }
+                    Button("Open Safari Extension Settings") {
+                        openExtensionSettings()
                     }
                 } footer: {
                     if !SharedStatus.isAvailable {
@@ -132,18 +142,14 @@ struct StatusView: View {
                 if SharedStatus.isAvailable {
                     manualSection
                 }
-                if !allGreen {
-                    setupSection
-                }
-                Section {
-                    Text("Lookups use Apple’s public News index; the URLs you read never leave your device. There is no server and no analytics.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+                setupSection
             }
             .formStyle(.grouped)
             .navigationTitle("QuickNews")
             .refreshable { await model.refresh() }
+        }
+        .task {
+            for await _ in SharedStatus.changes() { await model.refresh() }
         }
         .task(id: scenePhase) {
             if scenePhase == .active { await model.refresh() }
@@ -152,17 +158,30 @@ struct StatusView: View {
 
     @ViewBuilder
     private var extensionRow: some View {
-        switch model.extensionEnabled {
-        case true?:
-            StatusRow(light: .green, title: "Safari extension") { Text("On") }
-        case false?:
-            StatusRow(light: .red, title: "Safari extension") { Text("Off — turn it on in Safari’s settings") }
-        case nil:
-            StatusRow(light: .off, title: "Safari extension") { Text("iOS can’t report this before 26.2") }
+        let light: Light = switch extensionOn { case true?: .green; case false?: .red; case nil: .off }
+        StatusRow(light: light, title: "Safari Extension") {
+            Text(extensionOn.map { $0 ? "On" : "Off" } ?? "Unknown")
         }
-        Button("Open Safari Extension Settings") {
-            openExtensionSettings()
+    }
+
+    /// Whether Safari lets the extension run on every website, which is what
+    /// makes it work on any site you add. As last reported by the extension.
+    @ViewBuilder
+    private var accessRow: some View {
+        let (light, detail): (Light, LocalizedStringKey) = switch model.status?.access {
+        case "all"?: (.green, "Granted")
+        case "some"?: (.yellow, "Some Websites")
+        case "none"?: (.red, "Not Granted")
+        default: (.off, "Unknown")
         }
+        StatusRow(light: light, title: "Website Access") { Text(detail) }
+    }
+
+    /// iOS's answer, or, when it can't give one, On if the extension ran in the last day.
+    private var extensionOn: Bool? {
+        if let enabled = model.extensionEnabled { return enabled }
+        if let active = model.status?.lastActive, -active.timeIntervalSinceNow < 24 * 3600 { return true }
+        return nil
     }
 
     /// Opens Safari's settings at this extension: on/off, and its website access.
@@ -178,27 +197,6 @@ struct StatusView: View {
         #endif
     }
 
-    private var reachableSites: [String] {
-        guard let status = model.status else { return [] }
-        return status.sites.filter { site, on in
-            on && (status.lastSeen(site).map { -$0.timeIntervalSinceNow < recentlySeen } ?? false)
-        }.map(\.key)
-    }
-
-    @ViewBuilder
-    private var accessRow: some View {
-        if model.extensionEnabled == false {
-            StatusRow(light: .red, title: "Website access") { Text("Needs the extension turned on") }
-        } else if model.status == nil {
-            StatusRow(light: .yellow, title: "Website access") { Text("Not reported yet — open a publisher’s article in Safari") }
-        } else if reachableSites.isEmpty {
-            StatusRow(light: .yellow, title: "Website access") { Text("Not seen on any site yet — allow it when Safari asks") }
-        } else {
-            let on = model.status?.sites.values.filter { $0 }.count ?? 0
-            StatusRow(light: .green, title: "Website access") { Text("Working on \(reachableSites.count) of \(on) sites") }
-        }
-    }
-
     @ViewBuilder
     private var autoRow: some View {
         if let status = model.status {
@@ -209,16 +207,6 @@ struct StatusView: View {
             }
         } else {
             StatusRow(light: .off, title: "Open automatically") { Text("Not reported yet") }
-        }
-    }
-
-    @ViewBuilder
-    private var lookupRow: some View {
-        if let lookup = model.status?.lastLookup {
-            let at = Date(timeIntervalSince1970: lookup.at / 1000)
-            StatusRow(light: lookup.ranged ? .green : .yellow, title: "Last lookup") {
-                Text("\(Int(lookup.ms)) ms · \(lookup.ranged ? "partial" : "whole") index download\(lookup.native == true ? " by the app extension" : " by Safari")\(lookup.newsHeaders == true ? " as News" : "") · \(at, format: .relative(presentation: .named))")
-            }
         }
     }
 
@@ -240,9 +228,7 @@ struct StatusView: View {
         } header: {
             Text("Sites")
         } footer: {
-            if let syncedAt = model.syncedAt {
-                Text("Reported by Safari \(syncedAt, format: .relative(presentation: .named)). Add or remove sites from the extension’s menu in the address bar.")
-            }
+            Text("Add or remove sites from the extension’s menu in the address bar.")
         }
     }
 
@@ -285,20 +271,27 @@ struct StatusView: View {
         newManualSite = ""
     }
 
-    private var allGreen: Bool {
-        model.extensionEnabled != false && (!reachableSites.isEmpty || !SharedStatus.isAvailable)
+    private var setupSteps: [String] {
+        #if os(macOS)
+        ["Click Open Safari Extension Settings above",
+         "Tick QuickNews",
+         "Click Edit Websites… and set Other Websites to Allow"]
+        #else
+        ["Tap Open Safari Extension Settings above",
+         "Turn on Allow Extension",
+         "Set Other Websites to Allow"]
+        #endif
     }
 
     private var setupSection: some View {
-        Section("Set up") {
-            #if os(macOS)
-            Label("Open Safari › Settings › Extensions", systemImage: "1.circle")
-            Label("Tick QuickNews", systemImage: "2.circle")
-            #else
-            Label("Tap Open Safari Extension Settings above", systemImage: "1.circle")
-            Label("Turn QuickNews on", systemImage: "2.circle")
-            #endif
-            Label("Open a publisher’s article in Safari and allow the extension there", systemImage: "3.circle")
+        Section {
+            ForEach(Array(setupSteps.enumerated()), id: \.offset) { index, step in
+                Label(step, systemImage: "\(index + 1).circle")
+            }
+        } header: {
+            Text("Set up")
+        } footer: {
+            Text("Article lookups occur on-device and are not logged or transmitted anywhere.")
         }
     }
 }

@@ -8,17 +8,12 @@ struct ExtensionStatus: Codable {
     var auto: Bool
     var seen: [String: Double]  // site -> when the extension last ran there (ms since 1970)
     var active: Double          // when the extension last ran anywhere (ms since 1970)
-    var lastLookup: Lookup?
     var manual: [String: Bool]?  // site -> true: button only, never opens News by itself
     var manualAt: Double?        // when manual last changed in Safari (ms since 1970)
+    var access: String?          // websites Safari lets it run on: "all", "some" or "none"
 
-    struct Lookup: Codable {
-        var ranged: Bool        // fetched part of the index rather than the whole bucket file
-        var native: Bool?       // looked up by the app extension rather than in the browser
-        var newsHeaders: Bool?  // sent News's own request headers (builds you install yourself)
-        var ms: Double
-        var at: Double          // ms since 1970
-    }
+    /// When the extension last ran anywhere.
+    var lastActive: Date? { active > 0 ? Date(timeIntervalSince1970: active / 1000) : nil }
 
     func lastSeen(_ site: String) -> Date? {
         seen[site].map { Date(timeIntervalSince1970: $0 / 1000) }
@@ -40,14 +35,42 @@ enum SharedStatus {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) != nil
     }
     private static let statusKey = "extensionStatus"
-    private static let syncedKey = "syncedAt"
     private static let manualKey = "manualSites"
 
     static func save(_ json: Any) {
         guard let data = try? JSONSerialization.data(withJSONObject: json),
               (try? JSONDecoder().decode(ExtensionStatus.self, from: data)) != nil else { return }
         defaults?.set(data, forKey: statusKey)
-        defaults?.set(Date(), forKey: syncedKey)
+        postChanged()
+    }
+
+    private static func postChanged() {
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(),
+                                             CFNotificationName(changedName as CFString), nil, nil, true)
+    }
+
+    /// Posted across processes whenever the extension saves a report.
+    private static let changedName = "com.canopysf.AutoOpenInNews.statusChanged"
+
+    /// Yields each time the extension saves a report, so the app can update while it's open.
+    static func changes() -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            let box = Unmanaged.passRetained(ContinuationBox(continuation)).toOpaque()
+            let center = CFNotificationCenterGetDarwinNotifyCenter()
+            CFNotificationCenterAddObserver(center, box, { _, observer, _, _, _ in
+                guard let observer else { return }
+                Unmanaged<ContinuationBox>.fromOpaque(observer).takeUnretainedValue().continuation.yield()
+            }, changedName as CFString, nil, .deliverImmediately)
+            continuation.onTermination = { _ in
+                CFNotificationCenterRemoveObserver(center, box, CFNotificationName(changedName as CFString), nil)
+                Unmanaged<ContinuationBox>.fromOpaque(box).release()
+            }
+        }
+    }
+
+    private final class ContinuationBox: @unchecked Sendable {
+        let continuation: AsyncStream<Void>.Continuation
+        init(_ continuation: AsyncStream<Void>.Continuation) { self.continuation = continuation }
     }
 
     /// Button-only sites as last edited in the app, with when (ms since 1970).
@@ -63,10 +86,8 @@ enum SharedStatus {
         defaults?.set(["manual": sites, "manualAt": Date().timeIntervalSince1970 * 1000], forKey: manualKey)
     }
 
-    static func load() -> (status: ExtensionStatus, syncedAt: Date)? {
-        guard let data = defaults?.data(forKey: statusKey),
-              let status = try? JSONDecoder().decode(ExtensionStatus.self, from: data),
-              let syncedAt = defaults?.object(forKey: syncedKey) as? Date else { return nil }
-        return (status, syncedAt)
+    static func load() -> ExtensionStatus? {
+        guard let data = defaults?.data(forKey: statusKey) else { return nil }
+        return try? JSONDecoder().decode(ExtensionStatus.self, from: data)
     }
 }

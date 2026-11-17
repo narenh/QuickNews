@@ -68,8 +68,8 @@ median of five URLs:
 
 The CDN rejects CORS preflights. Extension contexts with host permission don't send one, but an
 ordinary web page in Chromium does, so the same code run from a page falls back to the whole file.
-Safari's native lookups aren't subject to CORS at all. The status app's *Last lookup* row shows how
-the last lookup was made.
+Safari's native lookups aren't subject to CORS at all. Debug builds log each lookup, without its
+URL (Console.app, subsystem `com.canopysf.AutoOpenInNews`, category `lookup`); other builds log nothing.
 
 ## How it was found
 
@@ -160,8 +160,8 @@ and TestFlight apps. A build you install yourself can't save its state there, so
 relaunches and applies the iCloud state, it switches the extension off, sometimes after one relaunch,
 sometimes after two. With sharing off, it stays on.
 
-The app shows status lights for the extension: whether Safari has it turned on, whether it has run
-on your sites, and whether automatic opening is on.
+The app shows status lights for the extension: whether Safari has it turned on, whether Safari
+lets it run on every website, and whether automatic opening is on.
 
 ### Builds you install yourself vs. release builds
 
@@ -172,7 +172,7 @@ code is compiled in only with the `NEWS_CLIENT_HEADERS` Swift flag:
 - **Debug builds** (running from Xcode) set it.
 - **`scripts/install-mac.sh`** sets it for its Release build.
 - **Other Release builds**, including App Store archives, don't, and their binaries contain none of
-  it. Those identify as Open in News.
+  it. Those send the extension's own default headers.
 
 To set it on any other build, pass
 `SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) NEWS_CLIENT_HEADERS'` to `xcodebuild`.

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "QuickNews",
   "version": "1.0",
-  "description": "Opens paywalled publisher articles in the Apple News app.",
+  "description": "Opens news articles from Safari in the Apple News app.",
   "icons": {
     "48": "icons/48.png",
     "96": "icons/96.png",

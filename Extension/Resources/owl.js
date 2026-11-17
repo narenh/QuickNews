@@ -182,11 +182,8 @@ async function owlLookupRanged(path, hash) {
   throw new Error('range lookup did not converge'); // owlResolve falls back to the whole file
 }
 
-/* How the last lookup went: { ranged, ms }, for the status app. */
-let owlLastLookup = null;
-
 /* Returns the Apple News article ID for a web URL, or null if News has none. */
-async function owlResolve(url, { ranged = true } = {}) {
+async function owlResolve(url) {
   const canonical = owlCanonicalize(url);
   if (!canonical) return null;
 
@@ -199,19 +196,13 @@ async function owlResolve(url, { ranged = true } = {}) {
   bucket %= BigInt(bucketCount);
 
   const path = `${group}/index/${bucket}`;
-  const started = Date.now();
-  let id;
   try {
-    if (!ranged) throw new Error('ranged lookups off');
-    id = await owlLookupRanged(path, hash);
+    return await owlLookupRanged(path, hash);
   } catch {
     // The CDN rejects CORS preflights, so a browser that preflights Range
     // requests can only use the whole file.
-    ranged = false;
-    id = await owlLookupFull(path, hash);
+    return owlLookupFull(path, hash);
   }
-  owlLastLookup = { ranged, ms: Date.now() - started };
-  return id;
 }
 
 if (typeof module !== 'undefined') module.exports = { owlCanonicalize, owlResolve };

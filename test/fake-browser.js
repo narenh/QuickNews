@@ -30,7 +30,6 @@ function load(owlResolve, { openPopup = async () => {} } = {}) {
   ctx.self = ctx;
   for (const f of ['sites.js', 'autoopen.js', 'icon.js', 'background.js']) vm.runInContext(fs.readFileSync(R + f, 'utf8'), ctx);
   ctx.owlResolve = owlResolve;
-  ctx.owlLastLookup = {};
   const settle = () => new Promise((r) => setTimeout(r, 10));
   const message = (m, sender = {}) => new Promise((res) => onMessage(m, sender, res));
   return {

@@ -53,17 +53,8 @@ async function nativeLookup(url) {
 }
 
 async function resolve(url) {
-  const started = Date.now();
   const native = await nativeLookup(url);
-  let id, report;
-  if (native) {
-    id = native.found ? native.id : null;
-    report = { ranged: native.ranged, native: true, newsHeaders: native.newsHeaders === true, ms: Date.now() - started };
-  } else {
-    id = await owlResolve(url).catch(() => undefined);
-    report = { ...owlLastLookup, native: false, ms: Date.now() - started };
-  }
-  await browser.storage.local.set({ lastLookup: { ...report, at: Date.now() } });
+  const id = native ? (native.found ? native.id : null) : await owlResolve(url).catch(() => undefined);
   syncToApp().catch(() => {});
   return id;
 }
@@ -85,9 +76,22 @@ function lookup(url) {
 async function syncToApp() {
   if (!IS_SAFARI) return;
   const { sites, auto, manual, manualAt } = await settings();
-  const { seen = {}, active = 0, lastLookup = null } = await browser.storage.local.get(['seen', 'active', 'lastLookup']);
-  const reply = await browser.runtime.sendNativeMessage(APP_ID, { action: 'sync', state: { sites, auto, seen, active, lastLookup, manual, manualAt } });
+  const { seen = {}, active = 0 } = await browser.storage.local.get(['seen', 'active']);
+  const access = await websiteAccess();
+  const reply = await browser.runtime.sendNativeMessage(APP_ID, { action: 'sync', state: { sites, auto, seen, active, manual, manualAt, ...(access && { access }) } });
+  await browser.storage.local.set({ reportedAccess: access });
   await adoptFromApp(reply);
+}
+
+/*
+ * Which websites Safari lets the extension run on, as far as it says: "all",
+ * "some" or "none". Null when the browser can't tell.
+ */
+async function websiteAccess() {
+  const origins = (await browser.permissions?.getAll?.().catch(() => null))?.origins;
+  if (!Array.isArray(origins)) return null;
+  if (origins.some((o) => o === '<all_urls>' || o === '*://*/*' || o === 'https://*/*')) return 'all';
+  return origins.some((o) => o !== 'https://news-assets.apple.com/*') ? 'some' : 'none';
 }
 
 /*
@@ -106,12 +110,15 @@ async function pullFromApp() {
 
 /* Records that the extension ran (on an enabled site, if given), reporting it when stale. */
 async function noteActivity(site) {
+  if (!IS_SAFARI) return; // only the Safari app shows where the extension ran
   const now = Date.now();
   const { seen = {}, active = 0 } = await browser.storage.local.get(['seen', 'active']);
   const stale = (t) => now - (t ?? 0) > SYNC_INTERVAL_MS;
-  if (!stale(active) && !(site && stale(seen[site]))) return;
-  await browser.storage.local.set({ active: now, ...(site && { seen: { ...seen, [site]: now } }) });
-  await syncToApp();
+  const due = stale(active) || (site && stale(seen[site]));
+  if (due) await browser.storage.local.set({ active: now, ...(site && { seen: { ...seen, [site]: now } }) });
+  // A change in website access is reported straight away.
+  const { reportedAccess } = await browser.storage.local.get(['reportedAccess']);
+  if (due || (await websiteAccess()) !== (reportedAccess ?? null)) await syncToApp();
 }
 
 async function setTabIcon(tabId, id) {
@@ -204,6 +211,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   Promise.resolve(handler(message, sender)).then(sendResponse, (e) => sendResponse({ error: String(e) }));
   return true;
 });
+
+// Website access can change in Safari's settings at any time; tell the app.
+browser.permissions?.onAdded?.addListener(() => syncToApp().catch(() => {}));
+browser.permissions?.onRemoved?.addListener(() => syncToApp().catch(() => {}));
+browser.runtime.onStartup?.addListener(() => syncToApp().catch(() => {}));
+browser.runtime.onInstalled?.addListener(() => syncToApp().catch(() => {}));
 
 // A new page starts with the normal icon; checkPage grays it if News lacks it.
 browser.tabs.onUpdated.addListener((tabId, change) => {
